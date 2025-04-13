@@ -263,7 +263,7 @@ def main():
                         system_instruction=system_prompt,
                         response_mime_type="application/json"
                     ),
-                    contents=json.dumps(messages)
+                    contents=messages
                 )
                 
                 # Parse the response
@@ -285,7 +285,7 @@ def main():
                         # Parse and validate input
                         parsed_input = parse_tool_input(function_name, raw_input)
                         
-                      
+                        # Execute the tool
                         result = execute_tool(function_name, parsed_input)
                         
                         # Add observation to messages
