@@ -2,11 +2,12 @@ from dotenv import load_dotenv
 import os
 import json
 import subprocess
+import platform
+import webbrowser
 import sys
 from google import genai
 from google.genai import types
 
-# Load environment variables
 load_dotenv()
 client = genai.Client(api_key=os.getenv("GEMINI_KEY"))
 
@@ -24,6 +25,54 @@ def run_command(command):
             "error": str(e),
             "returncode": 1
         }
+    
+def open_file(file_path):
+    """
+    Opens a file with the default application associated with its file type.
+    
+    Args:
+        file_path (str): Path to the file to open
+        
+    Returns:
+        dict: A dictionary with success status and message
+    """
+    try:
+        file_path = os.path.abspath(file_path)
+        
+        if not os.path.exists(file_path):
+            return {
+                "success": False,
+                "message": f"File not found: {file_path}"
+            }
+        
+        system = platform.system()
+        
+        # For HTML files, use webbrowser module
+        if file_path.lower().endswith(('.html', '.htm')):
+            webbrowser.open('file://' + file_path)
+            return {
+                "success": True,
+                "message": f"Opened {file_path} in default web browser"
+            }
+        
+        # For other files, use system-specific methods
+        if system == "Windows":
+            os.startfile(file_path)
+        elif system == "Darwin":  # macOS
+            subprocess.run(["open", file_path], check=True)
+        else:  # Linux and other Unix-like
+            subprocess.run(["xdg-open", file_path], check=True)
+            
+        return {
+            "success": True,
+            "message": f"Opened {file_path} with default application"
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "message": f"Error opening file: {str(e)}"
+        }
+
 
 def create_file(file_path, content):
     """Creates a file with the given content."""
@@ -82,6 +131,7 @@ available_tools = {
         "fn": create_file,
         "description": "Creates a file at the specified path with the given content"
     },
+
     "read_file": {
         "fn": read_file,
         "description": "Reads and returns the content of a file at the specified path"
@@ -93,7 +143,12 @@ available_tools = {
     "get_project_structure": {
         "fn": get_project_structure,
         "description": "Returns the project structure as a tree"
+    },
+    "open_file": {
+        "fn": open_file,
+        "description": "Opens a file with the default application associated with its file type"
     }
+    
 }
 
 # Define system prompt
