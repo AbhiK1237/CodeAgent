@@ -226,6 +226,27 @@ def print_header():
     print_colored("Type 'clear' to start a new conversation", "33")
     print("=" * 80 + "\n")
 
+def safely_get_text(response):
+    """Safely extract text from the Gemini response which could have different structures"""
+    try:
+        # Try first as an object with a text attribute
+        if hasattr(response, 'text'):
+            return response.text
+        # Try as a list with first element having text
+        elif isinstance(response, list) and len(response) > 0:
+            if hasattr(response[0], 'text'):
+                return response[0].text
+            # If first element is a dictionary with text key
+            elif isinstance(response[0], dict) and 'text' in response[0]:
+                return response[0]['text']
+        # Try direct access if it's a dictionary
+        elif isinstance(response, dict) and 'text' in response:
+            return response['text']
+        # If nothing works, convert to string
+        return str(response)
+    except Exception as e:
+        return f"Error extracting text from response: {str(e)}"
+
 def main():
     print_header()
     
@@ -257,18 +278,35 @@ def main():
             
             try:
                 # Generate response from the model
-                response = client.models.generate_content(
-                    model="gemini-1.5-flash",
-                    config=types.GenerateContentConfig(
-                        system_instruction=system_prompt,
-                        response_mime_type="application/json"
-                    ),
-                    contents=messages
-                )
+                try:
+                    # First try with json.dumps()
+                    response = client.models.generate_content(
+                        model="gemini-1.5-flash",
+                        config=types.GenerateContentConfig(
+                            system_instruction=system_prompt,
+                            response_mime_type="application/json"
+                        ),
+                        contents=json.dumps(messages)
+                    )
+                except Exception as e:
+                    # If that fails, try without json.dumps()
+                    print_colored(f"Retrying without json.dumps: {str(e)}", "1;33")
+                    response = client.models.generate_content(
+                        model="gemini-1.5-flash",
+                        config=types.GenerateContentConfig(
+                            system_instruction=system_prompt,
+                            response_mime_type="application/json"
+                        ),
+                        contents=messages
+                    )
                 
                 # Parse the response
                 try:
-                    parsed_output = json.loads(response.text)
+                    # Get the text content from the response
+                    response_text = safely_get_text(response)
+                    
+                    # Parse the JSON response
+                    parsed_output = json.loads(response_text)
                     messages.append({"role": "assistant", "content": json.dumps(parsed_output)})
                     
                     # Handle different steps
@@ -313,7 +351,7 @@ def main():
                         response_in_progress = False
                 
                 except json.JSONDecodeError:
-                    print_colored(f"⚠️ Invalid JSON response: {response.text}", "1;31")
+                    print_colored(f"⚠️ Invalid JSON response: {response_text[:200]}...", "1;31")
                     response_in_progress = False
             
             except Exception as e:
