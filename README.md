@@ -2,8 +2,8 @@
 
 CodeAgent is a powerful terminal-based AI coding assistant that helps you create, modify, and manage software projects directly from your command line interface. Leveraging the capabilities of Google's Gemini API, CodeAgent can understand natural language requests and translate them into actionable code and file operations.
 
-##DEMO
-<video src="/Assets/demo.mov" controls></video>
+##[Click here to watch the demo](/Assets/demo.mov)
+
 
 ## Features
 
