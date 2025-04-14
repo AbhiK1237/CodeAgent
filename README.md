@@ -62,7 +62,7 @@ google-genai==1.10.0
 5. Create a `.env` file in the project directory with your Gemini API key:
 
 ```
-GEMINI_KEY=your_gemini_api_key_here
+GEMINI_API_KEY=your_gemini_api_key_here
 ```
 
 ## Usage
