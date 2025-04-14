@@ -1,421 +1,318 @@
 from dotenv import load_dotenv
-import os
 import json
-import subprocess
-import platform
-import webbrowser
-import sys
+import requests
 from google import genai
 from google.genai import types
+import os
+import subprocess 
 
 load_dotenv()
-client = genai.Client(api_key=os.getenv("GEMINI_KEY"))
+client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 
-def run_command(command):
-    """Executes a system command and returns the output."""
+
+MAIN_DIC = "Ai_Gen_Project"  # Directory for generated files
+# Create the project directory if it doesn't exist
+os.makedirs(MAIN_DIC, exist_ok=True)
+print(f"🤖 Generated files will be managed in: ./{MAIN_DIC}/")
+
+
+
+def create_directory(path: str) -> str:
+    """Creates a directory (including parent directories) if it doesn't exist."""
+    full_path = os.path.join(MAIN_DIC, path)
+    print(f"🔨 Tool Called: create_directory, Path: {full_path}")
     try:
-        result = subprocess.run(command, shell=True, capture_output=True, text=True)
-        return {
-            "stdout": result.stdout,
-            "stderr": result.stderr,
-            "returncode": result.returncode
-        }
+        os.makedirs(full_path, exist_ok=True)
+        return f"Successfully created directory: {full_path}"
     except Exception as e:
-        return {
-            "error": str(e),
-            "returncode": 1
-        }
+        return f"Error creating directory {full_path}: {e}"
     
-def open_file(file_path):
-    """
-    Opens a file with the default application associated with its file type.
+def create_file(path: str, content: str = "") -> str:
+    """Creates a new file with specified content. Overwrites if exists."""
+    full_path = os.path.join(MAIN_DIC, path)
+    print(f"🔨 Tool Called: create_file, Path: {full_path}")
+    try:
+        # Ensure parent directory exists
+        os.makedirs(os.path.dirname(full_path), exist_ok=True)
+        with open(full_path, 'w') as f:
+            f.write(content)
+        return f"Successfully created/overwritten file: {full_path}"
+    except Exception as e:
+        return f"Error creating file {full_path}: {e}"
+
+
+def write_to_file(path: str, content: str) -> str:
+    """Writes (overwrites) content to an existing file."""
     
-    Args:
-        file_path (str): Path to the file to open
-        
-    Returns:
-        dict: A dictionary with success status and message
-    """
+    return create_file(path, content)
+
+def read_file(path: str) -> str:
+    """Reads the content of a file."""
+    full_path = os.path.join(MAIN_DIC, path)
+    print(f"🔨 Tool Called: read_file, Path: {full_path}")
     try:
-        file_path = os.path.abspath(file_path)
-        
-        if not os.path.exists(file_path):
-            return {
-                "success": False,
-                "message": f"File not found: {file_path}"
-            }
-        
-        system = platform.system()
-        
-        # For HTML files, use webbrowser module
-        if file_path.lower().endswith(('.html', '.htm')):
-            webbrowser.open('file://' + file_path)
-            return {
-                "success": True,
-                "message": f"Opened {file_path} in default web browser"
-            }
-        
-        # For other files, use system-specific methods
-        if system == "Windows":
-            os.startfile(file_path)
-        elif system == "Darwin":  # macOS
-            subprocess.run(["open", file_path], check=True)
-        else:  # Linux and other Unix-like
-            subprocess.run(["xdg-open", file_path], check=True)
-            
-        return {
-            "success": True,
-            "message": f"Opened {file_path} with default application"
-        }
+        with open(full_path, 'r') as f:
+            content = f.read()
+            # Add truncation for potentially large files to fit context
+            max_len = 2000
+            if len(content) > max_len:
+                return content[:max_len] + "\n... [File truncated]"
+            return content
+    except FileNotFoundError:
+        return f"Error: File not found at {full_path}"
     except Exception as e:
-        return {
-            "success": False,
-            "message": f"Error opening file: {str(e)}"
-        }
+        return f"Error reading file {full_path}: {e}"
 
-
-def create_file(file_path, content):
-    """Creates a file with the given content."""
+def list_directory(path: str = ".") -> str:
+    """Lists the contents of a directory within the project."""
+    full_path = os.path.join(MAIN_DIC, path)
+    print(f"🔨 Tool Called: list_directory, Path: {full_path}")
     try:
-        # Ensure the directory exists
-        os.makedirs(os.path.dirname(file_path), exist_ok=True)
-        
-        # Write the content to the file
-        with open(file_path, 'w') as file:
-            file.write(content)
-        return f"Successfully created file: {file_path}"
-    except Exception as e:
-        return f"Error creating file {file_path}: {str(e)}"
+        entries = os.listdir(full_path)
+        if not entries:
+            return f"Directory is empty: {full_path}"
+        # Add indication if entry is a file or directory
+        output = f"Contents of {full_path}:\n"
+        for entry in entries:
+            entry_path = os.path.join(full_path, entry)
+            is_dir = os.path.isdir(entry_path)
+            output += f"- {entry} {'(Directory)' if is_dir else '(File)'}\n"
+        return output
 
-def read_file(file_path):
-    """Reads and returns the content of a file."""
+    except FileNotFoundError:
+        return f"Error: Directory not found at {full_path}"
+    except Exception as e:
+        return f"Error listing directory {full_path}: {e}"
+
+
+def run_command(command: str) -> str:
+    """Runs a shell command within the project directory."""
+    print(f"🔨 Tool Called: run_command, Command: {command}")
+    # SECURITY WARNING: Running arbitrary commands can be dangerous.
+    # In a real-world scenario, implement strict sandboxing or command validation.
     try:
-        with open(file_path, 'r') as file:
-            return file.read()
-    except Exception as e:
-        return f"Error reading file {file_path}: {str(e)}"
+        # Execute the command within the defined MAIN_DIC
+        result = subprocess.run(
+            command,
+            shell=True,         # Be cautious with shell=True
+            cwd=MAIN_DIC,    # Run command in the project directory
+            capture_output=True,
+            text=True,
+            check=False         # Don't raise exception on non-zero exit code
+        )
+        output = f"Exit Code: {result.returncode}\n"
+        if result.stdout:
+            output += f"STDOUT:\n{result.stdout}\n"
+        if result.stderr:
+            output += f"STDERR:\n{result.stderr}\n"
+        max_len = 1000
+        if len(output) > max_len:
+             output = output[:max_len] + "\n... [Output truncated]"
+        return output
 
-def list_files(directory="."):
-    """Lists all files and directories in the specified path."""
-    try:
-        result = []
-        for root, dirs, files in os.walk(directory):
-            for file in files:
-                result.append(os.path.join(root, file))
-        return result
     except Exception as e:
-        return f"Error listing files in {directory}: {str(e)}"
+        return f"Error running command '{command}': {e}"
 
-def get_project_structure(directory="."):
-    """Returns the project structure as a tree."""
-    try:
-        result = []
-        for root, dirs, files in os.walk(directory):
-            level = root.replace(directory, '').count(os.sep)
-            indent = ' ' * 4 * level
-            result.append(f"{indent}{os.path.basename(root)}/")
-            sub_indent = ' ' * 4 * (level + 1)
-            for file in files:
-                result.append(f"{sub_indent}{file}")
-        return "\n".join(result)
-    except Exception as e:
-        return f"Error getting project structure: {str(e)}"
 
-# Define available tools
+# --- Available Tools Dictionary ---
+
 available_tools = {
-    "run_command": {
-        "fn": run_command,
-        "description": "Executes a system command (like pip install, npm install, git commands, etc.) and returns the output"
+    "create_directory": {
+        "fn": create_directory,
+        "description": "Creates a new directory at the specified path relative to the project root. Use POSIX-style paths (e.g., 'src/components').",
+        "input_schema": {"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]}
     },
     "create_file": {
         "fn": create_file,
-        "description": "Creates a file at the specified path with the given content"
+        "description": "Creates a new file at the specified path relative to the project root with the given content. Overwrites if the file already exists. Creates parent directories if needed. Use POSIX-style paths.",
+        "input_schema": {"type": "object", "properties": {"path": {"type": "string"}, "content": {"type": "string"}}, "required": ["path", "content"]}
     },
-
+     "write_to_file": { # Alias for create_file for clarity in LLM's reasoning
+        "fn": write_to_file,
+        "description": "Writes (or overwrites) content to a file at the specified path relative to the project root. Creates parent directories if needed. Use POSIX-style paths.",
+        "input_schema": {"type": "object", "properties": {"path": {"type": "string"}, "content": {"type": "string"}}, "required": ["path", "content"]}
+    },
     "read_file": {
         "fn": read_file,
-        "description": "Reads and returns the content of a file at the specified path"
+        "description": "Reads the content of a file at the specified path relative to the project root. Returns the content or an error if the file doesn't exist. Use POSIX-style paths.",
+        "input_schema": {"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]}
     },
-    "list_files": {
-        "fn": list_files,
-        "description": "Lists all files in the specified directory (recursively)"
+    "list_directory": {
+        "fn": list_directory,
+        "description": "Lists the files and subdirectories within a specified directory path relative to the project root. Use '.' for the root directory. Use POSIX-style paths.",
+        "input_schema": {"type": "object", "properties": {"path": {"type": "string", "default": "."}}, "required": ["path"]}
     },
-    "get_project_structure": {
-        "fn": get_project_structure,
-        "description": "Returns the project structure as a tree"
-    },
-    "open_file": {
-        "fn": open_file,
-        "description": "Opens a file with the default application associated with its file type"
+    "run_command": {
+        "fn": run_command,
+        "description": "Executes a shell command (like 'npm install', 'pip install', 'python app.py', 'npm run build') within the project's root directory. Returns the command's output (stdout/stderr) and exit code.",
+        "input_schema": {"type": "object", "properties": {"command": {"type": "string"}}, "required": ["command"]}
     }
-    
 }
 
-# Define system prompt
+
+tool_descriptions = "\n".join([
+    f"- {name}: {tool['description']} | Input JSON Schema: {json.dumps(tool['input_schema'])}"
+    for name, tool in available_tools.items()
+])
+
+
+# --- System Prompt ---
+
+tool_descriptions = "\n".join([
+    f"- {name}: {tool['description']} | Input JSON Schema: {json.dumps(tool['input_schema'])}"
+    for name, tool in available_tools.items()
+])
+
 system_prompt = f"""
-You are CodeAgent, an expert AI assistant specialized in full-stack development. You can create projects, write code, manage files, and run commands through a terminal interface.
+You are a specialized AI Assistant agent focused on coding and full-stack project development.
+Your goal is to help the user create, modify, and manage web development projects step-by-step directly through terminal interaction.
+You operate entirely within the './{MAIN_DIC}/' directory. All file paths you generate or use MUST be relative to this directory and use POSIX-style separators (/).
 
-You work in a methodical "start, plan, action, observe" mode:
-1. Start: Understand the user's request
-2. Plan: Break down the task into steps
-3. Action: Execute one step at a time using your available tools
-4. Observe: Review the results and proceed accordingly
-
-Your expertise includes:
-- Creating complete project structures (frontend and backend)
-- Writing code into appropriate files
-- Running installation and build commands
-- Adding features to existing projects by analyzing current code
-- Following best practices for software development
+Workflow:
+1.  **Understand:** Analyze the user's request.
+2.  **Plan:** Break down the request into small, sequential steps. For complex requests or follow-ups, PLAN to use 'list_directory' and 'read_file' first to understand the current project state before proposing changes. Output each planning step individually.
+3.  **Action:** For steps requiring interaction with the file system or command line, select the appropriate tool from the list below and specify the required input parameters in JSON format. Output the action step.
+4.  **Observe:** Wait for the result of the action (which will be provided in the next message).
+5.  **Output/Continue:** Based on the observation, either provide the final output/confirmation to the user or continue with the next planning/action step if the task is not complete.
 
 Rules:
-- Follow the Output JSON Format exactly
-- Always perform one step at a time and wait for the next observation
-- Carefully analyze the user's request and existing project context
-- Return your response as raw JSON only
+- Follow the Output JSON Format STRICTLY.
+- Perform ONE step (plan, action, or output) at a time. Wait for the next message before proceeding.
+- ALWAYS use relative paths based on the './{MAIN_DIC}/' root. Example: 'src/index.js', 'requirements.txt'.
+- When writing code, provide the complete code content for the file in the 'content' field of the 'create_file' or 'write_to_file' action.
+- Before modifying existing files in follow-up requests, ALWAYS plan to use 'read_file' to get the current content first.
+- If a command fails (non-zero exit code in observation), inform the user and ask how to proceed.
 
 Output JSON Format:
 {{
-    "step": "string", // "plan", "action", or "output"
-    "content": "string", // Your thoughts during planning or final output to user
-    "function": "string", // Tool name if step is "action"
-    "input": "any" // Input for the tool
+    "step": "plan | action | output",
+    "content": "Description of the plan, the final response to the user, or reasoning for the action.",
+    "function": "(Optional) The name of the function tool to call if step is 'action'.",
+    "input": "(Optional) A JSON object containing the required parameters for the function if step is 'action'."
 }}
 
 Available Tools:
-- run_command: Executes a system command (pip install, npm install, etc.) and returns the output
-- create_file: Creates a file at a specified path with given content
-- read_file: Reads and returns the content of a file
-- list_files: Lists all files in a specified directory
-- get_project_structure: Returns the project structure as a tree
+{tool_descriptions}
 
-When working with existing code:
-1. First get the project structure
-2. Read relevant files to understand the codebase
-3. Plan your changes carefully
-4. Create or modify files as needed
-5. Run necessary commands to test your changes
+Example Interaction:
 
-Your ultimate goal is to deliver working, high-quality code that meets the user's requirements.
+User Query: Create a simple python flask app with a single route.
+Assistant: {{ "step": "plan", "content": "Okay, I will create a simple Flask application. First, I need a main Python file." }}
+Assistant: {{ "step": "plan", "content": "I will create a file named 'app.py' in the root directory." }}
+Assistant: {{ "step": "action", "content": "Creating the main application file.", "function": "create_file", "input": {{ "path": "app.py", "content": "from flask import Flask\\n\\napp = Flask(__name__)\\n\\n@app.route('/')\\ndef hello_world():\\n    return 'Hello, World!'\\n\\nif __name__ == '__main__':\\n    app.run(debug=True)" }} }}
+User (System): {{ "step": "observe", "output": "Successfully created/overwritten file: ai_generated_project/app.py" }}
+Assistant: {{ "step": "plan", "content": "Now, I need to create a requirements.txt file for Flask." }}
+Assistant: {{ "step": "action", "content": "Creating requirements.txt.", "function": "create_file", "input": {{ "path": "requirements.txt", "content": "Flask" }} }}
+User (System): {{ "step": "observe", "output": "Successfully created/overwritten file: ai_generated_project/requirements.txt" }}
+Assistant: {{ "step": "plan", "content": "Next, I should install the dependencies using pip." }}
+Assistant: {{ "step": "action", "content": "Running pip install.", "function": "run_command", "input": {{ "command": "pip install -r requirements.txt" }} }}
+User (System): {{ "step": "observe", "output": "Exit Code: 0\\nSTDOUT:\\nCollecting Flask..." }}
+Assistant: {{ "step": "output", "content": "Flask project setup is complete. You have 'app.py' and 'requirements.txt'. Dependencies have been installed. You can run it using 'python app.py' within the '{MAIN_DIC}' directory." }}
+
 """
-def parse_tool_input(function_name, raw_input):
-    """Parse and validate tool inputs based on function requirements"""
-    try:
-        if function_name == "run_command":
-            if isinstance(raw_input, str):
-                return raw_input
-            else:
-                return str(raw_input)
-        
-        elif function_name == "create_file":
-            if isinstance(raw_input, dict):
-                # Handle both "file_path" and "path" keys
-                file_path = None
-                if "file_path" in raw_input:
-                    file_path = raw_input["file_path"]
-                elif "path" in raw_input:
-                    file_path = raw_input["path"]
+
+
+
+
+
+messages = [
+    { "role": "system", "content": system_prompt }
+]
+
+print("🤖 Agent Ready. How can I help you build today?")
+
+while True:
+    user_query = input('> ')
+    if user_query.lower() in ['exit', 'quit']:
+        break
+
+    messages.append({ "role": "user", "content": user_query })
+
+    while True: 
+        try:
+            response = client.models.generate_content(
+                model="gemini-1.5-flash", 
+                config=types.GenerateContentConfig(system_instruction=system_prompt, response_mime_type="application/json"),
+                contents=json.dumps(messages)
+            )
+            parsed_output = json.loads(response.text)
+            messages.append({ "role": "assistant", "content": json.dumps(parsed_output) })
+
+
+            step = parsed_output.get("step")
+            content = parsed_output.get("content", "")
+
+            print(f" M: Step: {step}, Content: {content}")
+
+            if step == "plan":
+                print(f"🧠 Planning: {content}")
+                continue
+
+            elif step == "action":
+                tool_name = parsed_output.get("function")
+                tool_input_dict = parsed_output.get("input")
+
+                print(f"🎬 Action: Calling {tool_name} with input: {tool_input_dict}")
+
+                if not tool_name or not isinstance(tool_input_dict, dict):
+                     print(f"🚨 Error: Invalid action format from LLM. Missing function name or input is not a JSON object.")
+                     messages.append({"role": "user", "content": f"Invalid action format provided. Ensure 'function' is specified and 'input' is a JSON object matching the tool schema. Tool: {tool_name}, Input: {tool_input_dict}"})
+                     continue
                 
-                content = raw_input.get("content")
-                
-                if file_path and content is not None:
-                    return {"file_path": file_path, "content": content}
-                else:
-                    raise ValueError("create_file requires 'file_path'/'path' and 'content' keys")
-            else:
-                raise ValueError("create_file requires a dict with file path and content information")
-        
-        elif function_name == "read_file":
-            if isinstance(raw_input, str):
-                return raw_input
-            else:
-                return str(raw_input)
-        
-        elif function_name == "list_files":
-            if raw_input is None or raw_input == "":
-                return "."
-            return raw_input
-        
-        elif function_name == "get_project_structure":
-            if raw_input is None or raw_input == "":
-                return "."
-            return raw_input
-        
-        else:
-            raise ValueError(f"Unknown function: {function_name}")
-    
-    except Exception as e:
-        return f"Error parsing input for {function_name}: {str(e)}"
 
-def execute_tool(function_name, parsed_input):
-    """Execute the specified tool with parsed inputs"""
-    try:
-        if function_name not in available_tools:
-            return f"Tool '{function_name}' not found"
-        
-        tool = available_tools[function_name]["fn"]
-        
-        if function_name == "create_file":
-            if isinstance(parsed_input, dict) and "file_path" in parsed_input and "content" in parsed_input:
-                return tool(parsed_input["file_path"], parsed_input["content"])
-            elif isinstance(parsed_input, str) and parsed_input.startswith("Error"):
-                return parsed_input
-            else:
-                return f"Invalid input format for create_file: {parsed_input}"
-        else:
-            return tool(parsed_input)
-    
-    except Exception as e:
-        return f"Error executing {function_name}: {str(e)}"
+                if tool_name in available_tools:
+                    tool_config = available_tools[tool_name]
+                    tool_function = tool_config["fn"]
+                    schema = tool_config["input_schema"]
 
-def print_colored(text, color_code):
-    """Print text with color"""
-    print(f"\033[{color_code}m{text}\033[0m")
+                    # Basic input validation (can be expanded)
+                    required_params = schema.get("required", [])
+                    missing_params = [p for p in required_params if p not in tool_input_dict]
 
-def print_header():
-    """Print a nice header for the agent"""
-    print("\n" + "=" * 80)
-    print_colored("🤖 CodeAgent - Your Terminal AI Coding Assistant", "1;36")
-    print("=" * 80)
-    print_colored("Type 'exit' or 'quit' to end the session", "33")
-    print_colored("Type 'clear' to start a new conversation", "33")
-    print("=" * 80 + "\n")
+                    if missing_params:
+                        print(f"🚨 Error: Missing required parameters for {tool_name}: {missing_params}")
+                        observation_content = f"Error: Missing required parameters for {tool_name}: {missing_params}. Required: {required_params}"
 
-def safely_get_text(response):
-    """Safely extract text from the Gemini response which could have different structures"""
-    try:
-        # Try first as an object with a text attribute
-        if hasattr(response, 'text'):
-            return response.text
-        # Try as a list with first element having text
-        elif isinstance(response, list) and len(response) > 0:
-            if hasattr(response[0], 'text'):
-                return response[0].text
-            # If first element is a dictionary with text key
-            elif isinstance(response[0], dict) and 'text' in response[0]:
-                return response[0]['text']
-        # Try direct access if it's a dictionary
-        elif isinstance(response, dict) and 'text' in response:
-            return response['text']
-        # If nothing works, convert to string
-        return str(response)
-    except Exception as e:
-        return f"Error extracting text from response: {str(e)}"
-
-def main():
-    print_header()
-    
-    messages = [
-        {"role": "system", "content": system_prompt}
-    ]
-    
-    conversation_active = True
-    
-    while conversation_active:
-        user_query = input("\033[1;32m> \033[0m")
-        
-        if user_query.lower() in ["exit", "quit"]:
-            print_colored("Goodbye! Happy coding! 👋", "1;36")
-            break
-        
-        if user_query.lower() == "clear":
-            messages = [{"role": "system", "content": system_prompt}]
-            print_colored("Conversation cleared. Starting fresh!", "1;33")
-            continue
-        
-        messages.append({"role": "user", "content": user_query})
-        
-        step_counter = 0
-        response_in_progress = True
-        
-        while response_in_progress:
-            step_counter += 1
-            
-            try:
-                # Generate response from the model
-                try:
-                    # First try with json.dumps()
-                    response = client.models.generate_content(
-                        model="gemini-1.5-flash",
-                        config=types.GenerateContentConfig(
-                            system_instruction=system_prompt,
-                            response_mime_type="application/json"
-                        ),
-                        contents=json.dumps(messages)
-                    )
-                except Exception as e:
-                    # If that fails, try without json.dumps()
-                    print_colored(f"Retrying without json.dumps: {str(e)}", "1;33")
-                    response = client.models.generate_content(
-                        model="gemini-1.5-flash",
-                        config=types.GenerateContentConfig(
-                            system_instruction=system_prompt,
-                            response_mime_type="application/json"
-                        ),
-                        contents=messages
-                    )
-                
-                # Parse the response
-                try:
-                    # Get the text content from the response
-                    response_text = safely_get_text(response)
-                    
-                    # Parse the JSON response
-                    parsed_output = json.loads(response_text)
-                    messages.append({"role": "assistant", "content": json.dumps(parsed_output)})
-                    
-                    # Handle different steps
-                    if parsed_output.get("step") == "plan":
-                        print_colored(f"🧠 Planning: {parsed_output.get('content')}", "1;34")
-                        continue
-                    
-                    elif parsed_output.get("step") == "action":
-                        function_name = parsed_output.get("function")
-                        raw_input = parsed_output.get("input")
-                        
-                        print_colored(f"🔧 Action: Using {function_name}", "1;35")
-                        
-                        # Parse and validate input
-                        parsed_input = parse_tool_input(function_name, raw_input)
-                        
-                        # Execute the tool
-                        result = execute_tool(function_name, parsed_input)
-                        
-                        # Add observation to messages
-                        messages.append({
-                            "role": "assistant", 
-                            "content": json.dumps({"step": "observe", "output": result})
-                        })
-                        
-                        # Show a brief summary of the result
-                        if isinstance(result, dict) and "stdout" in result:
-                            summary = result["stdout"][:100] + "..." if len(result["stdout"]) > 100 else result["stdout"]
-                            print_colored(f"👁️ Observation: {summary}", "1;33")
-                        else:
-                            summary = str(result)[:100] + "..." if len(str(result)) > 100 else str(result)
-                            print_colored(f"👁️ Observation: {summary}", "1;33")
-                        
-                        continue
-                    
-                    elif parsed_output.get("step") == "output":
-                        print_colored(f"🤖 {parsed_output.get('content')}", "1;32")
-                        response_in_progress = False
-                    
                     else:
-                        print_colored(f"⚠️ Unknown step: {parsed_output.get('step')}", "1;31")
-                        response_in_progress = False
-                
-                except json.JSONDecodeError:
-                    print_colored(f"⚠️ Invalid JSON response: {response_text[:200]}...", "1;31")
-                    response_in_progress = False
-            
-            except Exception as e:
-                print_colored(f"⚠️ Error: {str(e)}", "1;31")
-                response_in_progress = False
+                        try:
+                    
+                           observation_content = tool_function(**tool_input_dict)
 
-if __name__ == "__main__":
-    try:
-        main()
-    except KeyboardInterrupt:
-        print_colored("\nGoodbye! Happy coding! 👋", "1;36")
-        sys.exit(0)
+                        except TypeError as e:
+                             print(f"🚨 Error: Input mismatch for {tool_name}. Input: {tool_input_dict}, Error: {e}")
+                             observation_content = f"Error calling {tool_name}: Input mismatch or invalid argument. Provided input: {tool_input_dict}. Error: {e}"
+                        except Exception as e:
+                            print(f"🚨 Error executing tool {tool_name}: {e}")
+                            observation_content = f"Error during execution of {tool_name}: {e}"  
+
+                    observation_message = {
+                        "step": "observe",
+                        "tool_name": tool_name,
+                        "input": tool_input_dict,
+                        "output": observation_content
+                    }
+                    messages.append({ "role": "assistant", "content": json.dumps(observation_message) })
+                    print(f"👀 Observation: {observation_content}") 
+                    continue  
+                
+                else:
+                    print(f"🚨 Error: Tool '{tool_name}' not found.")
+    
+                    messages.append({"role": "user", "content": f"Error: The tool '{tool_name}' you specified is not available. Please choose from the available tools."})
+                    continue
+
+            elif step == "output":
+                print(f"🤖 Agent: {content}")
+                break # Exit the inner loop, wait for next user input         
+
+            else:
+                print(f"🚨 Error: Unknown step type '{step}' received from LLM.")
+                messages.append({"role": "user", "content": f"Error: Unknown step type '{step}'. Please use 'plan', 'action', or 'output'."})
+                break 
+        
+        except Exception as e:
+            print(f"🚨 An unexpected error occurred: {e}")
+            print("Messages so far:", json.dumps(messages, indent=2))
+            break
+
+print("🤖 Agent session finished.")
